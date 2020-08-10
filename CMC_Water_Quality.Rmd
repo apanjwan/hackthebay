@@ -1,0 +1,356 @@
+---
+title: "cmc"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(ggthemes)
+library(readr)
+library(sf)
+library(mapview)
+library(lubridate)
+```
+
+Challenge
+
+CMC would like to develop a case study of an area with sufficient historic/time series data and investigate if and how water quality has changed over time, including other native Bay species (submerged aquatic vegetation) has changed, and what environmental factors/practices may have influenced those changes.
+
+```{r message=FALSE}
+
+wq_data <- read_csv("C:/Users/607641/Documents/CMCHacktheBay/cmc_water_samples_03082020.csv", guess_max=40000)
+
+#head(wq_data)
+
+```
+
+Questions we are trying to answer:
+
+- How has water quality changed over time? 
+- Specifically how do water quality trends differ over time in land use, to development data, geology, or impervious surface cover?
+- How have environmental factors/practices affected change in water quality or other native Bay species?
+- How can we incorporate independent research or additional data to develop a story or model around how developments or changes in practices may have impacted water quality?
+- How do analyses using the Data Explorer data (alone, or in conjunction with other water quality data) differ from existing analyses?
+- What barriers/challenges exist for pairing Data Explorer data and external datasets for this analysis?
+
+What defines water quality?
+
+- Use one of the following water quality metrics to study: 
+
+  1) temperature and pH in Virginia; 
+  2) conductivity in Pennsylvania;
+  3) benthic (EPT) presence/absence in Virginia/Maryland) - How is this defined?
+
+```{r}
+
+wq_vars <- c("Water temperature", "pH")
+
+water_quality_vars <- wq_data %>% 
+  select(Date, Latitude, Longitude, year,
+    map(wq_vars, 
+             starts_with, 
+             vars = colnames(.)) %>% 
+         unlist()) 
+
+colnames(water_quality_vars)
+#str(water_quality_vars)
+
+# convert integer to date
+dates <- as.character(water_quality_vars$Date)
+water_quality_vars$Date = as.Date(dates, format="%m/%d/%Y")
+
+```
+
+Split the data into Tier 1 and Tier 2 using CMC's guidance to group Tier 1 with p1 and Tier 2 with p2. Also used the spreadsheet with the param codes for the filter conditions
+
+```{r}
+
+Tier1 <- water_quality_vars %>% 
+  filter(`Water temperature (WT.6) Tier` == 1 |
+         `Water temperature (WT.7) Tier` == 1 |
+         `Water temperature (WT.10) Tier` == 1 |
+         `Water temperature (WT.12) Tier` == 'p1' |
+         # `Water temperature (WT.13) Tier` == 'p1' |
+         `pH (PH.3) Tier` == 1 |
+         `pH (PH.7) Tier` == 1 |
+         `pH (PH.10) Tier` == 1 |
+         `pH (PH.6) Tier` == 'p1'
+         ) %>% 
+  select(Date, Latitude, Longitude, year,
+         `Water temperature (WT.6)`,
+         `Water temperature (WT.7)`,
+         `Water temperature (WT.10)`,
+         `Water temperature (WT.12)`,
+         `pH (PH.3)`,
+         `pH (PH.7)`,
+         `pH (PH.10)`,
+         `pH (PH.6)`
+  )
+
+Tier2 <- water_quality_vars %>% 
+  filter(`Water temperature (WT.1) Tier` == 2 |
+         `Water temperature (WT.2) Tier` == 2 |
+         `Water temperature (WT.3) Tier` == 2 |
+         `Water temperature (WT.5) Tier` == 'p2' |
+         `Water temperature (WT.8) Tier` == 'p2' |
+         `Water temperature (WT.9) Tier` == 'p2' |
+         # `Water temperature (WT.13) Tier` == 'p1' |
+         `pH (PH.1) Tier` == 2 |
+         `pH (PH.2) Tier` == 2 |
+         `pH (PH.9) Tier` == 'p2' |
+         `pH (PH.11) Tier` == 'p2'
+         ) %>% 
+  select(Date, Latitude, Longitude, year,
+         `Water temperature (WT.1)`,
+         `Water temperature (WT.2)`,
+         `Water temperature (WT.3)`,
+         `Water temperature (WT.5)`,
+         `Water temperature (WT.8)`,
+         `Water temperature (WT.9)`,
+         `pH (PH.1)`,
+         `pH (PH.2)`,
+         `pH (PH.9)`,
+         `pH (PH.11)`
+  )
+
+```
+
+Let's look at water temperature...
+
+```{r}
+
+Tier1_vars <- Tier1 %>% 
+  select(Date, Latitude, Longitude, `Water temperature (WT.6)`, `Water temperature (WT.7)`, `Water temperature (WT.10)`, `Water temperature (WT.12)`)
+
+wt6 <- Tier1_vars %>% 
+  filter(!is.na(`Water temperature (WT.6)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.6)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt7 <- Tier1_vars %>% 
+  filter(!is.na(`Water temperature (WT.7)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.7)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt10 <- Tier1_vars %>% 
+  filter(!is.na(`Water temperature (WT.10)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.10)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt12 <- Tier1_vars %>% 
+  filter(!is.na(`Water temperature (WT.12)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.12)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+merge1_t1 <- rbind(wt6, wt7)
+merge2_t1 <- rbind(merge1_t1, wt10)
+merge_all_t1 <- rbind(merge2_t1, wt12)
+
+write.csv(merge_all_t1, 'Tier1_Water_temp.csv')
+
+Tier2_vars <- Tier2 %>% 
+  select(Date, Latitude, Longitude, `Water temperature (WT.1)`, `Water temperature (WT.2)`, `Water temperature (WT.3)`,`Water temperature (WT.5)`, `Water temperature (WT.8)`, `Water temperature (WT.9)`)
+
+wt1 <- Tier2_vars %>% 
+  filter(!is.na(`Water temperature (WT.1)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.1)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt2 <- Tier2_vars %>% 
+  filter(!is.na(`Water temperature (WT.2)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.2)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt3 <- Tier2_vars %>% 
+  filter(!is.na(`Water temperature (WT.3)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.3)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt5 <- Tier2_vars %>% 
+  filter(!is.na(`Water temperature (WT.5)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.5)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt8 <- Tier2_vars %>% 
+  filter(!is.na(`Water temperature (WT.8)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.8)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+wt9 <- Tier2_vars %>% 
+  filter(!is.na(`Water temperature (WT.9)`)) %>% 
+  mutate(water_temp = `Water temperature (WT.9)`) %>% 
+  select(Date, Latitude, Longitude, water_temp)
+
+merge1_t2 <- rbind(wt1, wt2)
+merge2_t2 <- rbind(merge1_t2, wt3)
+merge3_t2 <- rbind(merge2_t2, wt5)
+merge4_t2 <- rbind(merge3_t2, wt8)
+merge_all_t2 <- rbind(merge4_t2, wt9)
+
+write.csv(merge_all_t2, 'Tier2_Water_temp.csv')
+
+```
+
+Let's look at pH... (pH should be between 6.5 and 8.5)
+
+```{r}
+
+Tier1_vars_pH <- Tier1 %>% 
+  select(Date, Latitude, Longitude, `pH (PH.3)`, `pH (PH.6)`, `pH (PH.7)`, `pH (PH.10)`)
+
+ph3 <- Tier1_vars_pH %>% 
+  filter(!is.na(`pH (PH.3)`)) %>% 
+  mutate(pH = `pH (PH.3)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+ph6 <- Tier1_vars_pH %>% 
+  filter(!is.na(`pH (PH.6)`)) %>% 
+  mutate(pH = `pH (PH.6)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+ph7 <- Tier1_vars_pH %>% 
+  filter(!is.na(`pH (PH.7)`)) %>% 
+  mutate(pH = `pH (PH.7)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+ph10 <- Tier1_vars_pH %>% 
+  filter(!is.na(`pH (PH.10)`)) %>% 
+  mutate(pH = `pH (PH.10)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+merge1_ph_t1 <- rbind(ph3, ph6)
+merge2_ph_t1 <- rbind(merge1_ph_t1, ph7)
+merge_ph_all_t1 <- rbind(merge2_ph_t1, ph10)
+
+write.csv(merge_ph_all_t1, 'Tier1_pH.csv')
+
+Tier2_vars_pH <- Tier2 %>% 
+  select(Date, Latitude, Longitude, `pH (PH.1)`, `pH (PH.2)`, `pH (PH.9)`, `pH (PH.11)`)
+
+ph1 <- Tier2_vars_pH %>% 
+  filter(!is.na(`pH (PH.1)`)) %>% 
+  mutate(pH = `pH (PH.1)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+ph2 <- Tier2_vars_pH %>% 
+  filter(!is.na(`pH (PH.2)`)) %>% 
+  mutate(pH = `pH (PH.2)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+ph9 <- Tier2_vars_pH %>% 
+  filter(!is.na(`pH (PH.9)`)) %>% 
+  mutate(pH = `pH (PH.9)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+ph11 <- Tier2_vars_pH %>% 
+  filter(!is.na(`pH (PH.11)`)) %>% 
+  mutate(pH = `pH (PH.11)`) %>% 
+  select(Date, Latitude, Longitude, pH)
+
+merge1_ph_t2 <- rbind(ph1, ph2)
+merge2_ph_t2 <- rbind(merge1_ph_t2, ph9)
+merge_ph_all_t2 <- rbind(merge2_ph_t2, ph11)
+
+write.csv(merge_ph_all_t2, 'Tier2_pH.csv')
+
+```
+
+Pulled the csv outputs into QGIS to see which areas were densely populated and I found an area in Pennsylvania, Letort Spring Run, that has samples collected frequently from 2000 through 2020.
+
+```{r message=FALSE}
+
+letort_watertemp <- read_csv("~/CMCHacktheBay/Challenge1/tier_1_temp_new.csv")
+letort_pH <- read_csv("~/CMCHacktheBay/Challenge1/tier_2_PH_new.csv")
+
+# formatted date
+letort_watertemp$New_Date = as.Date(letort_watertemp$Date, format="%m/%d/%Y")
+letort_pH$New_Date = as.Date(letort_pH$Date, format="%m/%d/%Y")
+
+```
+
+How does the water temperature change over time?
+
+Animated map in Shiny app
+
+```{r}
+
+letort_ord <- letort_watertemp %>% arrange(New_Date)
+
+write_rds(letort_ord, "letort_spring_run.rds")
+
+letort_ord <- read_rds("C:/Users/607641/Documents/CMCHacktheBay/WQ/letort_spring_run.rds")
+
+hotspot1 <- letort_ord %>% 
+  filter(Latitude==40.19568, Longitude==-77.18767)
+
+```
+
+Time Series Analysis
+
+Sorted the water temperature to see the hottest spots and selected 2 sets of coordinates
+
+```{r}
+
+# sort letort_ord by water_temp to identify lat longs with hot spots
+# lat =40.19568, long=-77.18767
+
+hotspot1 <- letort_ord %>% 
+  filter(Latitude==40.19568, Longitude==-77.18767) %>% 
+  mutate(year = lubridate::year(New_Date))
+
+hotspot2 <- letort_ord %>% 
+  filter(Latitude==40.19588, Longitude==-77.18745) %>% 
+  mutate(year = lubridate::year(New_Date))
+
+```
+
+Plot the time series and save them as png files
+
+```{r}
+
+# saves output as a png
+# png(filename="hotspot1.png")
+
+hotspot1 %>%
+  filter(year >= 2004 & year <= 2011) %>% 
+  ggplot() +
+  geom_line(aes(x=as.Date(New_Date,"%Y-%m-%d"), y=water_temp)) +
+  theme_economist() +
+  scale_color_economist() +
+  scale_x_date(date_breaks = "6 month", date_labels =  "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45)) +
+  xlab("") +
+  ylab("Water Temperature (deg C)") +
+  ggtitle("(40.19568, -77.18767)")
+
+# dev.off()
+
+```
+
+```{r}
+
+# saves output as a png
+png(filename="hotspot2.png")
+
+hotspot2 %>%
+  filter(year >= 2004 & year <= 2011) %>% 
+  ggplot() +
+  geom_line(aes(x=as.Date(New_Date,"%Y-%m-%d"), y=water_temp)) +
+  theme_economist() +
+  scale_color_economist() +
+  scale_x_date(date_breaks = "6 month", date_labels =  "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45)) +
+  xlab("") +
+  ylab("Water Temperature (deg C)") +
+  ggtitle("(40.19588, -77.18745)") 
+
+dev.off()
+
+```
+
